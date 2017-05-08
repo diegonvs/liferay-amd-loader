@@ -440,7 +440,7 @@ var LoaderProtoMethods = {
         for (var i = 0; i < moduleNames.length; i++) {
             var module = registeredModules[moduleNames[i]];
 
-            var mappedDependencies = configParser.mapModule(module.dependencies);
+            var mappedDependencies = configParser.mapModule(module.dependencies, module.map);
 
             for (var j = 0; j < mappedDependencies.length; j++) {
                 var dependency = mappedDependencies[j];
@@ -634,6 +634,7 @@ var LoaderProtoMethods = {
             var script = document.createElement('script');
 
             script.src = modulesURL.url;
+            script.async = false;
 
             // On ready state change is needed for IE < 9, not sure if that is needed anymore,
             // it depends which browsers will we support at the end
@@ -710,6 +711,7 @@ var LoaderProtoMethods = {
      * @param {array} modules List of modules to which implementation should be set.
      */
     _setModuleImplementation: function(modules) {
+        var self = this;
         var registeredModules = this._getConfigParser().getModules();
 
         for (var i = 0; i < modules.length; i++) {
@@ -752,7 +754,7 @@ var LoaderProtoMethods = {
                         } else {
                             moduleName = pathResolver.resolvePath(module.name, moduleName);
 
-                            moduleName = configParser.mapModule(moduleName);
+                            moduleName = configParser.mapModule(moduleName, module.map);
 
                             var dependencyModule = configParser.getModules()[moduleName];
 
@@ -764,10 +766,16 @@ var LoaderProtoMethods = {
                           }
                     };
 
+                    localRequire.toUrl = function(moduleName) {
+                        var moduleURLs = self._getURLBuilder().build([moduleName]);
+
+                        return moduleURLs[0].url;
+                    };
+
                     dependencyImplementations.push(localRequire);
                 } else {
                     // otherwise set as value the implementation of the registered module
-                    var dependencyModule = registeredModules[configParser.mapModule(dependency)];
+                    var dependencyModule = registeredModules[configParser.mapModule(dependency, module.map)];
 
                     var impl = dependencyModule.implementation;
 

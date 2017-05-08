@@ -3,7 +3,7 @@
  * @copyright Copyright (c) 2014 Yehuda Katz, Tom Dale, Stefan Penner and contributors (Conversion to ES6 API by Jake Archibald)
  * @license   Licensed under MIT license
  *            See https://raw.githubusercontent.com/stefanpenner/es6-promise/master/LICENSE
- * @version   4.1.0
+ * @version   4.0.5
  */
 
 (function (global, factory) {
@@ -311,7 +311,6 @@ function handleMaybeThenable(promise, maybeThenable, then$$) {
   } else {
     if (then$$ === GET_THEN_ERROR) {
       _reject(promise, GET_THEN_ERROR.error);
-      GET_THEN_ERROR.error = null;
     } else if (then$$ === undefined) {
       fulfill(promise, maybeThenable);
     } else if (isFunction(then$$)) {
@@ -432,7 +431,7 @@ function invokeCallback(settled, promise, callback, detail) {
     if (value === TRY_CATCH_ERROR) {
       failed = true;
       error = value.error;
-      value.error = null;
+      value = null;
     } else {
       succeeded = true;
     }
@@ -1157,7 +1156,6 @@ return Promise;
 })));
 //# sourceMappingURL=es6-promise.map
 
-
 (function() {
 	var global = {};
 
@@ -1372,12 +1370,17 @@ ConfigParser.prototype = {
      * then a corresponding alias will be searched. If found, the name will be replaced,
      * so it will look like user did require('liferay@1.0.0/html/js/ac.es',...).
      *
+     * Additionally, modules can define a custom map to alias module names just in the context
+     * of that module loading operation. When present, the contextual module mapping will take
+     * precedence over the general one.
+     *
      * @protected
      * @param {array|string} module The module which have to be mapped or array of modules.
+     * @param {?object} contextMap Contextual module mapping information relevant to the current load operation
      * @return {array|string} The mapped module or array of mapped modules.
      */
-    mapModule: function(module) {
-        if (!this._config.maps) {
+    mapModule: function(module, contextMap) {
+        if (!this._config.maps && !contextMap) {
             return module;
         }
 
@@ -1389,7 +1392,13 @@ ConfigParser.prototype = {
             modules = [module];
         }
 
-        modules = modules.map(this._getModuleMapper(this._config.maps));
+        if (contextMap) {
+            modules = modules.map(this._getModuleMapper(contextMap));
+        }
+
+        if (this._config.maps) {
+            modules = modules.map(this._getModuleMapper(this._config.maps));
+        }
 
         return Array.isArray(module) ? modules : modules[0];
     },
@@ -1751,7 +1760,7 @@ DependencyBuilder.prototype = {
                 dependencyName = this._pathResolver.resolvePath(module.name, dependencyName);
 
                 // A module may have many dependencies so we should map them.
-                var mappedDependencyName = this._configParser.mapModule(dependencyName);
+                var mappedDependencyName = this._configParser.mapModule(dependencyName, module.map);
                 var moduleDependency = modules[mappedDependencyName];
 
                 // Register on the fly all unregistered in the configuration dependencies as
@@ -2557,7 +2566,7 @@ var LoaderProtoMethods = {
         for (var i = 0; i < moduleNames.length; i++) {
             var module = registeredModules[moduleNames[i]];
 
-            var mappedDependencies = configParser.mapModule(module.dependencies);
+            var mappedDependencies = configParser.mapModule(module.dependencies, module.map);
 
             for (var j = 0; j < mappedDependencies.length; j++) {
                 var dependency = mappedDependencies[j];
@@ -2751,6 +2760,7 @@ var LoaderProtoMethods = {
             var script = document.createElement('script');
 
             script.src = modulesURL.url;
+            script.async = false;
 
             // On ready state change is needed for IE < 9, not sure if that is needed anymore,
             // it depends which browsers will we support at the end
@@ -2827,6 +2837,7 @@ var LoaderProtoMethods = {
      * @param {array} modules List of modules to which implementation should be set.
      */
     _setModuleImplementation: function(modules) {
+        var self = this;
         var registeredModules = this._getConfigParser().getModules();
 
         for (var i = 0; i < modules.length; i++) {
@@ -2869,7 +2880,7 @@ var LoaderProtoMethods = {
                         } else {
                             moduleName = pathResolver.resolvePath(module.name, moduleName);
 
-                            moduleName = configParser.mapModule(moduleName);
+                            moduleName = configParser.mapModule(moduleName, module.map);
 
                             var dependencyModule = configParser.getModules()[moduleName];
 
@@ -2881,10 +2892,16 @@ var LoaderProtoMethods = {
                           }
                     };
 
+                    localRequire.toUrl = function(moduleName) {
+                        var moduleURLs = self._getURLBuilder().build([moduleName]);
+
+                        return moduleURLs[0].url;
+                    };
+
                     dependencyImplementations.push(localRequire);
                 } else {
                     // otherwise set as value the implementation of the registered module
-                    var dependencyModule = registeredModules[configParser.mapModule(dependency)];
+                    var dependencyModule = registeredModules[configParser.mapModule(dependency, module.map)];
 
                     var impl = dependencyModule.implementation;
 
